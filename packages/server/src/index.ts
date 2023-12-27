@@ -1,6 +1,9 @@
+import { ApolloServer } from "apollo-server-express";
+import { ApolloServerPluginDrainHttpServer } from "apollo-server-core";
+import express from "express";
+import http from "http";
+import serverless from "serverless-http";
 import type * as winston from "winston";
-import { ApolloServer } from "@apollo/server";
-import { startStandaloneServer } from "@apollo/server/standalone";
 import {
   ApolloServerErrorCode,
   unwrapResolverError,
@@ -16,11 +19,15 @@ const serverRootLogger: winston.Logger = coreLogger.rootLogger.child({
   module: "server",
 });
 
+const app = express();
+const httpServer = http.createServer(app);
+
 const server = new ApolloServer({
   typeDefs,
   resolvers: resolvers.resolvers,
-  formatError: (formattedError, error) => {
-    const extensions = formattedError.extensions ?? {};
+  persistedQueries: false,
+  formatError: (error) => {
+    const extensions = error.extensions ?? {};
     switch (extensions.code) {
       case "INTERNAL":
       case "BAD_REQUEST":
@@ -53,41 +60,40 @@ const server = new ApolloServer({
 
     if (extensions.code === "INTERNAL") {
       serverRootLogger.error("internal error response", {
-        formattedError,
-        error: unwrapResolverError(error),
+        error,
+        errorMessage: unwrapResolverError(error),
       });
     }
 
     return {
-      ...formattedError,
+      ...error,
       extensions,
       message:
-        extensions.code === "INTERNAL"
-          ? "Internal error"
-          : formattedError.message,
+        extensions.code === "INTERNAL" ? "Internal error" : error.message,
     };
   },
+  context: async () => {
+    const carrierRegistry = new DefaultCarrierRegistry();
+    await carrierRegistry.init();
+    const appContext: AppContext = {
+      carrierRegistry,
+    };
+    return { appContext };
+  },
+  plugins: [ApolloServerPluginDrainHttpServer({ httpServer })],
 });
 
-async function main(): Promise<void> {
-  const carrierRegistry = new DefaultCarrierRegistry();
-  await carrierRegistry.init();
-
-  const appContext: AppContext = {
-    carrierRegistry,
-  };
-
-  const { url } = await startStandaloneServer(server, {
-    context: async ({ req, res }) => ({
-      appContext,
-    }),
-  });
-  serverRootLogger.info(`🚀 Server ready at ${url}`);
-}
+app.get("/health", (req, res) => {
+  res.send("OK");
+});
 
 initLogger();
-main().catch((err) => {
-  serverRootLogger.error("Uncaught error", {
-    error: err,
-  });
-});
+const main = async () => {
+  await server.start();
+  server.applyMiddleware({ app });
+  await new Promise<void>((resolve) =>
+    httpServer.listen({ port: 4000 }, resolve)
+  );
+  console.log(`🚀 Server ready at http://localhost:4000${server.graphqlPath}`);
+};
+main();

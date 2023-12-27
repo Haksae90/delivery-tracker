@@ -8,13 +8,22 @@
     "build": "tsc -p .",
     "build-with-deps": "pnpm --filter '@delivery-tracker/api' --filter '@delivery-tracker/core' build-with-deps && pnpm build",
     "start": "node dist/index.js",
-    "dev": "node-dev src/index.ts"
+    "dev": "node src/index.ts"
   },
   "dependencies": {
     "@apollo/server": "^4.7.0",
     "@delivery-tracker/api": "workspace:*",
     "@delivery-tracker/core": "workspace:*",
+    "@types/express": "^4.17.21",
+    "@types/express-request-id": "^3.0.0",
+    "apollo-server-core": "^3.13.0",
+    "apollo-server-express": "^3.13.0",
+    "apollo-server-lambda": "^3.13.0",
+    "express": "^4.18.2",
+    "express-request-id": "^3.0.0",
     "luxon": "^3.4.0",
+    "serverless-http": "^3.2.0",
+    "tsc-watch": "^6.0.4",
     "winston": "^3.8.2"
   },
   "devDependencies": {
