@@ -10,17 +10,21 @@ import { CVSnet } from "../carriers/kr.cvsnet";
 import { DHL } from "../carriers/de.dhl";
 import { Cway } from "../carriers/kr.cway";
 import { Sagawa } from "../carriers/jp.sagawa";
+import { Yamato } from "../carriers/jp.yamato";
 import { Daesin } from "../carriers/kr.daesin";
 import { Hanjin } from "../carriers/kr.hanjin";
 import { KoreaPost } from "../carriers/kr.epost";
+import { KoreaPostEMS } from "../carriers/kr.epost.ems";
 import { HonamLogis } from "../carriers/kr.honamlogis";
 import { IlyangLogis } from "../carriers/kr.ilyanglogis";
 import { KyungdongExpress } from "../carriers/kr.kdexp";
 import { Kunyoung } from "../carriers/kr.kunyoung";
 import { Logen } from "../carriers/kr.logen";
 import { LotteGlobalLogistics } from "../carriers/kr.lotte";
+import { LTL } from "../carriers/kr.ltl";
 import { SLX } from "../carriers/kr.slx";
 import { TodayPickup } from "../carriers/kr.todaypickup";
+import { YongmaLogis } from "../carriers/kr.yongmalogis";
 import { EMS } from "../carriers/un.upu.ems";
 import { TNT } from "../carriers/nl.tnt";
 import { Fedex } from "../carriers/us.fedex";
@@ -29,6 +33,9 @@ import { USPS } from "../carriers/us.usps";
 import { ActcoreOceanInbound } from "../carriers/kr.actcore.ocean-inbound";
 import { CoupangLogisticsServices } from "../carriers/kr.coupangls";
 import { GoodsToLuck } from "../carriers/kr.goodstoluck";
+import { CainiaoGlobal } from "../carriers/cn.cainiao.global";
+import { Pantos } from "../carriers/kr.epantos";
+import { LotteGlobal } from "../carriers/kr.lotte.global";
 
 interface DefaultCarrierRegistryConfig {
   carriers: Record<
@@ -46,8 +53,10 @@ class DefaultCarrierRegistry implements CarrierRegistry {
   public async init(): Promise<void> {
     await this.loadConfig();
 
+    await this.register(new CainiaoGlobal());
     await this.register(new DHL());
     await this.register(new Sagawa());
+    await this.register(new Yamato());
     await this.register(new ActcoreOceanInbound());
     await this.register(new CJLogistics());
     await this.register(new CoupangLogisticsServices());
@@ -56,7 +65,9 @@ class DefaultCarrierRegistry implements CarrierRegistry {
     await this.register(new CVSnet());
     await this.register(new Cway());
     await this.register(new Daesin());
+    await this.register(new Pantos());
     await this.register(new KoreaPost());
+    await this.register(new KoreaPostEMS());
     await this.register(new GoodsToLuck());
     await this.register(new CarrierAlias("kr.homepick", new Hanjin()));
     await this.register(new Hanjin());
@@ -66,12 +77,15 @@ class DefaultCarrierRegistry implements CarrierRegistry {
     await this.register(new Kunyoung());
     await this.register(new Logen());
     await this.register(new LotteGlobalLogistics());
+    await this.register(new LotteGlobal());
+    await this.register(new LTL());
     await this.register(new SLX());
     await this.register(new CarrierAlias("kr.swgexp.epost", new KoreaPost()));
     await this.register(
       new CarrierAlias("kr.swgexp.cjlogistics", new CJLogistics())
     );
     await this.register(new TodayPickup());
+    await this.register(new YongmaLogis());
     await this.register(new TNT());
     await this.register(new EMS());
     await this.register(new Fedex());
@@ -83,6 +97,9 @@ class DefaultCarrierRegistry implements CarrierRegistry {
     return {
       carriers: {
         "de.dhl": {
+          enabled: false,
+        },
+        "kr.ltl": {
           enabled: false,
         },
         "us.fedex": {

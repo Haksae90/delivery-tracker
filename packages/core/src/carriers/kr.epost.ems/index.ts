@@ -16,21 +16,21 @@ import { JSDOM } from "jsdom";
 import { type CarrierUpstreamFetcher } from "../../carrier-upstream-fetcher/CarrierUpstreamFetcher";
 
 const carrierLogger = rootLogger.child({
-  carrierId: "kr.epost",
+  carrierId: "kr.epost.ems",
 });
 
-class KoreaPost extends Carrier {
-  readonly carrierId = "kr.epost";
+class KoreaPostEMS extends Carrier {
+  readonly carrierId = "kr.epost.ems";
 
   public async track(input: CarrierTrackInput): Promise<TrackInfo> {
-    return await new KoreaPostTrackScraper(
+    return await new KoreaPostEMSTrackScraper(
       this.upstreamFetcher,
       input.trackingNumber
     ).track();
   }
 }
 
-class KoreaPostTrackScraper {
+class KoreaPostEMSTrackScraper {
   private readonly logger: Logger;
 
   constructor(
@@ -42,10 +42,11 @@ class KoreaPostTrackScraper {
 
   public async track(): Promise<TrackInfo> {
     const queryString = new URLSearchParams({
-      sid1: this.trackingNumber,
+      POST_CODE: this.trackingNumber,
+      displayHeader: "N",
     }).toString();
     const response = await this.upstreamFetcher.fetch(
-      `https://service.epost.go.kr/trace.RetrieveDomRigiTraceList.comm?${queryString}`
+      `https://service.epost.go.kr/trace.RetrieveEmsRigiTraceList.comm?${queryString}`
     );
     const traceResponseHtmlText = await response.text();
     this.logger.debug("traceResponseHtmlText", {
@@ -55,7 +56,7 @@ class KoreaPostTrackScraper {
     const dom = new JSDOM(traceResponseHtmlText);
     const { document } = dom.window;
 
-    const eventTrs = document.querySelectorAll("#processTable > tbody > tr");
+    const eventTrs = document.querySelectorAll("table.detail_off > tbody > tr");
     if (eventTrs.length < 1) {
       throw new NotFoundError();
     }
@@ -76,23 +77,20 @@ class KoreaPostTrackScraper {
 
   private parseEvent(tr: Element): TrackEvent {
     const tds = tr.querySelectorAll("td");
-    const date = tds[0].textContent?.replace(/\s+/g, " ")?.trim() ?? null;
-    const time = tds[1].textContent?.replace(/\s+/g, " ")?.trim() ?? null;
+    const time = tds[0].textContent?.replace(/\s+/g, " ")?.trim() ?? null;
+    const status = tds[1].textContent?.replace(/\s+/g, " ")?.trim() ?? null;
     const location = tds[2].textContent?.replace(/\s+/g, " ")?.trim() ?? null;
-    const status = tds[3].textContent?.replace(/\s+/g, " ")?.trim() ?? null;
-
-    // 되도록 원본 텍스트 유지 (접수는 제외)
-    const statusDescription =
-      status?.startsWith("접수 소포 물품 사진") === true
-        ? "접수"
-        : status ?? "";
+    let description = tds[3].textContent?.replace(/\s+/g, " ")?.trim() ?? null;
+    if (description === "" || description === null) {
+      description = `${status ?? ""} - ${location ?? ""}`;
+    }
 
     return {
       status: this.parseStatus(status),
-      time: this.parseTime(date, time),
+      time: this.parseTime(time),
       location: this.parseLocation(location),
       contact: null,
-      description: `${statusDescription} - ${location ?? ""}`,
+      description,
       carrierSpecificData: new Map(),
     };
   }
@@ -108,14 +106,14 @@ class KoreaPostTrackScraper {
     }
 
     switch (status) {
-      case "운송장출력":
       case "접수":
-      case "접수 마감 후 접수(익일발송)":
         return {
           code: TrackEventStatusCode.InformationReceived,
           name: status,
           carrierSpecificData: new Map(),
         };
+      case "발송준비":
+      case "교환국 도착":
       case "발송":
       case "도착":
         return {
@@ -124,14 +122,7 @@ class KoreaPostTrackScraper {
           carrierSpecificData: new Map(),
         };
     }
-    // NOTE: text가 "접수 소포 물품 사진 //<![CDATA[" 형식이면 "접수"로 변경하기 위함
-    if (status.startsWith("접수 소포 물품 사진")) {
-      return {
-        code: TrackEventStatusCode.InformationReceived,
-        name: "접수",
-        carrierSpecificData: new Map(),
-      };
-    }
+
     if (status.includes("배달준비")) {
       return {
         code: TrackEventStatusCode.OutForDelivery,
@@ -146,42 +137,6 @@ class KoreaPostTrackScraper {
         carrierSpecificData: new Map(),
       };
     }
-    if (status.includes("신청취소")) {
-      return {
-        code: TrackEventStatusCode.Exception,
-        name: "신청취소",
-        carrierSpecificData: new Map(),
-      };
-    }
-    if (status.includes("접수취소")) {
-      return {
-        code: TrackEventStatusCode.Exception,
-        name: "접수취소",
-        carrierSpecificData: new Map(),
-      };
-    }
-    if (status.includes("미배달")) {
-      return {
-        code: TrackEventStatusCode.AttemptFail,
-        name: "미배달",
-        carrierSpecificData: new Map(),
-      };
-    }
-    if (status.includes("인수완료")) {
-      return {
-        code: TrackEventStatusCode.AtPickup,
-        name: "인수완료",
-        carrierSpecificData: new Map(),
-      };
-    }
-    if (status.includes("집하완료")) {
-      return {
-        code: TrackEventStatusCode.InTransit,
-        name: "집하완료",
-        carrierSpecificData: new Map(),
-      };
-    }
-
     this.logger.warn("Unexpected status code", {
       status,
     });
@@ -193,17 +148,13 @@ class KoreaPostTrackScraper {
     };
   }
 
-  private parseTime(date: string | null, time: string | null): DateTime | null {
-    if (date === null) {
-      this.logger.warn("date or time null");
-      return null;
-    }
+  private parseTime(time: string | null): DateTime | null {
     if (time === null) {
       this.logger.warn("date or time null");
       return null;
     }
 
-    const result = DateTime.fromFormat(`${date} ${time}`, "yyyy.MM.dd HH:mm", {
+    const result = DateTime.fromFormat(time, "yyyy.MM.dd HH:mm", {
       zone: "Asia/Seoul",
     });
 
@@ -277,4 +228,4 @@ class KoreaPostTrackScraper {
   }
 }
 
-export { KoreaPost };
+export { KoreaPostEMS };

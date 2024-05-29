@@ -15,6 +15,7 @@ import { type ContactInfoPhoneNumberArgs } from "../schema/generated/resolvers-t
 import { ArrayCursorConnection } from "../cursor/ArrayCursorConnection";
 
 interface TrackInfoContext {
+  carrierId: string;
   trackingNumber: string;
   trackInfo: TrackInfo;
 }
@@ -92,6 +93,7 @@ async function queryTrackResolver(
   }
 
   return {
+    carrierId: args.carrierId,
     trackingNumber: args.trackingNumber,
     trackInfo,
   };
@@ -123,6 +125,10 @@ function trackInfoLastEventResolver(
       trackInfoContext: parent,
       trackEvent: deliveredEvent,
     };
+  }
+
+  if (parent.trackInfo.events.length === 0) {
+    return null;
   }
 
   return {
